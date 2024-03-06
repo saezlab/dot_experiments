@@ -10,18 +10,14 @@ experiment_data <- load_libd_experiment(ref_type, sample_index)
 annotations <- experiment_data$ref$meta[, "layer"]
 locations <- experiment_data$srt$meta[, c('Row', 'Col')]
 
-if(method == "DOT")
-{
+if(method == "DOT"){
   weights <- run_DOT(experiment_data$ref$counts, annotations,
                      experiment_data$srt$counts, locations, 
                      ifelse(ref_type == 'aggregated', 0.25, 1))
-  
-}else if(method == "RCTD")
-{
+}else if(method == "RCTD"){
   weights <- run_RCTD(experiment_data$ref$counts, annotations,
                       experiment_data$srt$counts, locations)
-}else if(method == "CARD")
-{
+}else if(method == "CARD"){
   weights <- run_CARD(experiment_data$ref$counts, annotations,
                       experiment_data$srt$counts, locations)
 }
