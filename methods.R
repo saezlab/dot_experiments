@@ -217,7 +217,7 @@ run_RCTD <- function(ref_data, ref_annotations, srt_data, srt_coords)
 {
   ref_annotations <- as.factor(ref_annotations)
   names(ref_annotations) <- colnames(ref_data)
-  nUMI <- colSums(counts)
+  nUMI <- colSums(ref_data)
   levels(ref_annotations) <- gsub("/", "-", levels(ref_annotations))
   
   query <- spacexr::SpatialRNA(srt_coords, srt_data, colSums(srt_data))
@@ -225,8 +225,8 @@ run_RCTD <- function(ref_data, ref_annotations, srt_data, srt_coords)
   
   RCTD <- spacexr::create.RCTD(query, ref, max_cores = 1, UMI_min = 50)
   RCTD <- spacexr::run.RCTD(RCTD, doublet_mode = "full")
-  
-  return(polish_weights(RCTD@results$results_df, sort(unique(ref_annotations)), colnames(srt_data)))
+  # return(RCTD@results$weights)
+  return(polish_weights(RCTD@results$weights, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_RF <- function(ref_data, ref_annotations, srt_data)
