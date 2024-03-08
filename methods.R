@@ -1,11 +1,43 @@
 library(Matrix)
 
-run_DOT <- function(ref_data, ref_annotations, srt_data, srt_coords, ratios_weight = 0.25, max_spot_size = 20)
+polish_weights <- function(weights, columns = NULL, rows = NULL) 
+{
+  if (is.null(rows)) {
+    rows <- rownames(weights)
+  } else {
+    missing_rows <- setdiff(rows, rownames(weights))
+    if (length(missing_rows) > 0) {
+      mr <- matrix(1/ncol(weights), nrow = length(missing_rows), ncol = ncol(weights),
+                   dimnames = list(missing_rows, colnames(weights)))
+      weights <- rbind(weights, mr)
+    }
+  }
+  
+  if (is.null(columns)) {
+    columns <- colnames(weights)
+  } else {
+    missing_cols <- setdiff(columns, colnames(weights))
+    if (length(missing_cols) > 0) {
+      weights[, missing_cols] <- 0
+    }
+  }
+  
+  weights <- weights[rows, columns, drop = FALSE]
+  weights <- sweep(weights, 1, rowSums(weights), FUN = "/")
+  
+  return(weights)
+}
+
+run_DOT <- function(ref_data, ref_annotations, srt_data, srt_coords, 
+                    ratios_weight = 0.25, max_spot_size = 20, normalize = TRUE)
 {
   dot_ref <- DOT::setup.ref(ref_data, ref_annotations, max_genes = 10000)
   dot_srt <- DOT::setup.srt(srt_data, srt_coords)
   dot <- DOT::create.DOT(dot_srt, dot_ref)
   dot <- DOT::run.DOT.lowresolution(dot, ratios_weight = ratios_weight, max_spot_size = max_spot_size)
+  
+  if (normalize)
+    return(polish_weights(dot@weights, sort(unique(ref_annotations)), colnames(srt_data)))
   
   return(dot@weights)
 }
@@ -47,7 +79,7 @@ run_Harmony <- function(ref_data, ref_annotations, srt_data, K = 10)
     weights[i, names(ct_i)] <- ct_i
   }
   
-  return(weights)
+  return(polish_weights(weights, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_Seurat <- function(ref_data, ref_annotations, srt_data)
@@ -77,7 +109,7 @@ run_Seurat <- function(ref_data, ref_annotations, srt_data)
                                     prediction.assay = TRUE, we, dims = 1:50)
   weights <- t(weights@data)
   weights <- weights[, -ncol(weights)]
-  return(weights)
+  return(polish_weights(weights, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_SingleR <- function(ref_data, ref_annotations, srt_data)
@@ -105,7 +137,7 @@ run_SingleR <- function(ref_data, ref_annotations, srt_data)
   weights <- matrix(0, ncol = length(celltypes), nrow = ncol(srt_data),
                     dimnames = list(colnames(srt_data), celltypes))
   weights[rownames(pred), colnames(pred)] <- pred
-  return(weights)
+  return(polish_weights(weights, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_SPOTlight <- function(ref_data, ref_annotations, srt_data, n_cells = 100)
@@ -156,12 +188,12 @@ run_SPOTlight <- function(ref_data, ref_annotations, srt_data, n_cells = 100)
     group_id = "cluster",
     gene_id = "gene")
   
-  return(res$mat)
+  return(polish_weights(res$mat, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_CARD <- function(ref_data, ref_annotations, srt_data, srt_coords)
 {
-  sc_meta <- data.frame(Indetity = ref_annotations)
+  sc_meta <- data.frame(Identity = ref_annotations)
   sc_meta$sampleInfo <- 'sample1'
   rownames(sc_meta) <- colnames(ref_data)
   
@@ -170,15 +202,15 @@ run_CARD <- function(ref_data, ref_annotations, srt_data, srt_coords)
     sc_meta = sc_meta, # data.frame, with "cellType" and "sampleInfo" columns
     spatial_count = srt_data, # gene x location
     spatial_location = srt_coords, # location x (x,y)
-    ct.varname = "Indetity",
-    ct.select = unique(sc_meta$Indetity),
+    ct.varname = "Identity",
+    ct.select = unique(sc_meta$Identity),
     sample.varname = "sampleInfo",
     minCountGene = 100,
     minCountSpot = 5)
   
   CARD_obj <- CARD::CARD_deconvolution(CARD_object = CARD_obj)
   
-  return(CARD_obj@Proportion_CARD)
+  return(polish_weights(CARD_obj@Proportion_CARD, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_RCTD <- function(ref_data, ref_annotations, srt_data, srt_coords)
@@ -194,7 +226,7 @@ run_RCTD <- function(ref_data, ref_annotations, srt_data, srt_coords)
   RCTD <- spacexr::create.RCTD(query, ref, max_cores = 1, UMI_min = 50)
   RCTD <- spacexr::run.RCTD(RCTD, doublet_mode = "full")
   
-  return(RCTD@results$results_df)
+  return(polish_weights(RCTD@results$results_df, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_RF <- function(ref_data, ref_annotations, srt_data)
@@ -210,7 +242,7 @@ run_RF <- function(ref_data, ref_annotations, srt_data)
   prd <- predict(rf, t(srt_data))
   rownames(prd$predictions) <- colnames(srt_data)
   
-  return(prd$predictions)
+  return(polish_weights(prd$predictions, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 # Python:
