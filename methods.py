@@ -1,4 +1,3 @@
-# from process_data import *
 import scanpy as sc
 import scipy
 import pandas as pd
@@ -28,10 +27,10 @@ def polish_weights(weights, columns = None, rows = None):
 def sample_by(adata, ann, ncells = None):
     if ncells is None:
         return adata
-    if ncells is not None:
-        df = pd.DataFrame({"ann": adata.obs[ann], "cell": adata.obs_names})
-        selected_cells = df.groupby('ann')['cell'].apply(lambda s: s.sample(min(len(s), ncells)))
-        return adata[selected_cells, :].copy()
+        
+    df = pd.DataFrame({"ann": adata.obs[ann], "cell": adata.obs_names})
+    selected_cells = df.groupby('ann')['cell'].apply(lambda s: s.sample(min(len(s), ncells)))
+    return adata[selected_cells, :].copy()
 
 def run_tacco(ref_adata, srt_adata, ref_annotation):
     import tacco as tc
