@@ -197,6 +197,8 @@ run_CARD <- function(ref_data, ref_annotations, srt_data, srt_coords)
   sc_meta$sampleInfo <- 'sample1'
   rownames(sc_meta) <- colnames(ref_data)
   
+  colnames(srt_coords) <- c("x", "y")
+  
   CARD_obj <- CARD::createCARDObject(
     sc_count = ref_data, # gene x cell
     sc_meta = sc_meta, # data.frame, with "cellType" and "sampleInfo" columns
@@ -217,16 +219,19 @@ run_RCTD <- function(ref_data, ref_annotations, srt_data, srt_coords)
 {
   ref_annotations <- as.factor(ref_annotations)
   names(ref_annotations) <- colnames(ref_data)
-  nUMI <- colSums(ref_data)
   levels(ref_annotations) <- gsub("/", "-", levels(ref_annotations))
+  nUMI <- colSums(ref_data)
   
   query <- spacexr::SpatialRNA(srt_coords, srt_data, colSums(srt_data))
   ref <- spacexr::Reference(ref_data, ref_annotations, nUMI)
   
   RCTD <- spacexr::create.RCTD(query, ref, max_cores = 1, UMI_min = 50)
   RCTD <- spacexr::run.RCTD(RCTD, doublet_mode = "full")
-  # return(RCTD@results$weights)
-  return(polish_weights(RCTD@results$weights, sort(unique(ref_annotations)), colnames(srt_data)))
+  weights <- RCTD@results$weights
+  colnames(weights) <- stringr::str_replace_all(colnames(weights), "\\.", "-")
+  
+  # return(weights)
+  return(polish_weights(weights, sort(unique(ref_annotations)), colnames(srt_data)))
 }
 
 run_RF <- function(ref_data, ref_annotations, srt_data)
