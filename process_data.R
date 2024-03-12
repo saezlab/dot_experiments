@@ -36,18 +36,18 @@ load_st_her2p <- function(st_id)
 
 load_vis_tnbc <- function(vis_id)
 {
-  data_dir_st <- "../Wu_etal_2021_vis"
+  data_dir_vis <- "../Wu_etal_2021_vis"
   
   vis_counts <- sprintf("%s/filtered_count_matrices/%s_filtered_count_matrix/", 
-                        data_dir_st, vis_id)
+                        data_dir_vis, vis_id)
   vis_counts <- Seurat::Read10X(vis_counts, gene.column = 1)
   
   vis_meta <- read.csv(sprintf("%s/metadata/%s_metadata_processed.csv", 
-                               data_dir_st, vis_id), row.names = 1)
+                               data_dir_vis, vis_id), row.names = 1)
   
-  vis_count <- vis_count[, rownames(vis_meta)]
+  vis_counts <- vis_counts[, rownames(vis_meta)]
   
-  return(list(counts = vis_count, meta = vis_meta))
+  return(list(counts = vis_counts, meta = vis_meta))
 }
 
 load_sc_wu <- function(subtype = "HER2+")
