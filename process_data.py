@@ -1,7 +1,9 @@
 import pandas as pd
 import scanpy as sc
 import numpy as np
+import scipy as sp
 from scipy import sparse
+import os
 
 def load_libd_sample(sample_name):
     libd_dir = "../LIBD"
@@ -141,3 +143,74 @@ def produce_mop_multicell(sample_id = "mouse1_sample1", sc_data = None,
     remaining_sc = list(set(sc_data.obs_names) -set(sc_cells))
 
     return sc_data[remaining_sc].copy(), srt_adata
+
+def load_st_her2p(st_id):
+    data_dir_st = "../Andersson_etal_2021"
+    
+    st_counts = pd.read_csv(f"{data_dir_st}/ST-cnts/{st_id}.tsv.gz", 
+                            sep="\t", index_col=0)
+    st_counts = sc.AnnData(st_counts)
+    
+    st_meta = pd.read_csv(f"{data_dir_st}/ST-spotfiles/{st_id}_selection.tsv", sep="\t")
+    st_meta.index = [f"{x}x{y}" for x, y in zip(st_meta['x'], st_meta['y'])]
+    
+    pat_file = f"{data_dir_st}/ST-pat/lbl/{st_id}_labeled_coordinates.tsv"
+    
+    if os.path.exists(pat_file):
+        pat = pd.read_csv(pat_file, sep="\t")
+        pat = pat[~pat['x'].isna()]
+        pat['x2'] = pat['x'].round().astype("int")
+        pat['y2'] = pat['y'].round().astype("int")
+        pat.index = [f"{x}x{y}" for x, y in zip(pat['x2'], pat['y2'])]
+        pat = pat.loc[st_meta.index]
+        
+        st_meta['pat_label'] = pat['label'].values.tolist()
+        
+    common_spots = st_meta.index.intersection(st_counts.obs.index)
+    st_meta = st_meta.loc[common_spots,:].copy()
+    st_counts = st_counts[common_spots,:].copy()
+    st_counts.obs = st_meta
+
+    return st_counts
+
+def read_mtx(dir):
+    counts = sp.io.mmread(f"{dir}/single_file.mm").tocsr()
+    genes = pd.read_csv(f"{dir}/single_file_genes.csv", index_col=0)
+    barcodes = pd.read_csv(f"{dir}/single_file_barcodes.csv", index_col=0)
+    adt = sc.AnnData(X = counts.T)
+    adt.var_names = genes['x']
+    adt.obs_names = barcodes['x']
+    return adt
+
+def load_vis_tnbc(vis_id):
+    data_dir_vis = "../Wu_etal_2021_vis"
+    
+    vis_counts = read_mtx(f'{data_dir_vis}/filtered_count_matrices/{vis_id}_filtered_count_matrix/')
+    vis_meta = pd.read_csv(f"{data_dir_vis}/metadata/{vis_id}_metadata_processed.csv", 
+                           index_col=0)
+    vis_counts = vis_counts[vis_meta.index].copy()
+    vis_counts.obs = vis_meta
+    
+    return vis_counts
+
+def load_sc_wu(subtype="HER2+"):
+    sc_dir = "../Wu_etal_2021_sc"
+    
+    sc_meta = pd.read_csv(f"{sc_dir}/metadata.csv", index_col=0)
+    if subtype != 'all':
+        sc_meta = sc_meta[sc_meta['subtype'] == subtype].copy()
+    
+    sc_data = sc.read_mtx(f"{sc_dir}/matrix.mtx")
+    sc_data = sc_data.T
+    
+    genes = pd.read_csv(f"{sc_dir}/genes.tsv", sep = "\t", header = None)
+    barcodes = pd.read_csv(f"{sc_dir}/barcodes.tsv", sep = "\t", header = None)
+    
+    sc_data.var_names = genes[0].values
+    sc_data.obs_names = barcodes[0].values
+    
+    sc_data = sc_data[sc_meta.index, :].copy()
+    sc_data.obs = sc_meta
+  
+    return sc_data
+ 
