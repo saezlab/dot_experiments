@@ -5,7 +5,7 @@ import numpy as np
 import tempfile
 import os
 
-def polish_weights(weights, columns = None, rows = None):
+def polish_weights(weights, columns = None, rows = None, normalize = True):
     if rows is None:
         rows = weights.index
     else:
@@ -21,7 +21,8 @@ def polish_weights(weights, columns = None, rows = None):
             weights[missing_cols] = 0
             
     weights = weights.loc[rows, columns].copy()
-    weights = weights.div(weights.sum(axis = 1), axis = 0)
+    if normalize:
+        weights = weights.div(weights.sum(axis = 1), axis = 0)
     return weights
 
 def sample_by(adata, ann, ncells = None):
@@ -135,7 +136,8 @@ def parse_use_gpu_arg(
         return accelerator, lightning_devices
 """
 
-def run_cell2location(ref_adata, srt_adata, ref_annotation, epochs = 20000, N_cells_per_location=30, detection_alpha=20, ncells = None):
+def run_cell2location(ref_adata, srt_adata, ref_annotation, epochs = 20000, 
+                      N_cells_per_location=30, detection_alpha=20, ncells = None, normalize = True):
     os.environ["THEANO_FLAGS"] = 'device=cpu,floatX=float32,force_device=True'
     import cell2location as c2l
 
@@ -160,35 +162,42 @@ def run_cell2location(ref_adata, srt_adata, ref_annotation, epochs = 20000, N_ce
         ref_adata.var.set_index('SYMBOL', drop=True, inplace=True)
         ref_adata.obs['Sample'] = 'sample'
         ref_adata.obs['Method'] = 'method'
-        
+
         selected = c2l.utils.filtering.filter_genes(ref_adata, cell_count_cutoff=5, cell_percentage_cutoff2=0.03, nonz_mean_cutoff=1.12)
-    
+
         # filter the object
         ref_adata = ref_adata[:, selected].copy()
-    
-        c2l.models.RegressionModel.setup_anndata(adata=ref_adata, 
-                        # 10X reaction / sample / batch
-                        batch_key='Sample', 
-                        # cell type, covariate used for constructing signatures
-                        labels_key=ref_annotation, 
-                        # multiplicative technical effects (platform, 3' vs 5', donor effect)
-                        categorical_covariate_keys=['Method'])
-    
-        mod = c2l.models.RegressionModel(ref_adata) 
-        mod.train(max_epochs=epochs)
-    
-        ref_adata = mod.export_posterior(
-            ref_adata, sample_kwargs={'num_samples': 1000, 'batch_size': 2500})
-        
-        # Save model
-        mod.save(f"{ref_run_name}", overwrite=True)
-    
-        if 'means_per_cluster_mu_fg' in ref_adata.varm.keys():
-            inf_aver = ref_adata.varm['means_per_cluster_mu_fg'][[f'means_per_cluster_mu_fg_{i}' 
-                                            for i in ref_adata.uns['mod']['factor_names']]].copy()
+
+        ct_key = 'q05cell_abundance_w_sf_'
+        if ref_annotation in ref_adata.varm.keys():
+            inf_aver = ref_adata.varm[ref_annotation]
         else:
-            inf_aver = ref_adata.var[[f'means_per_cluster_mu_fg_{i}' 
-                                            for i in ref_adata.uns['mod']['factor_names']]].copy()
+            c2l.models.RegressionModel.setup_anndata(adata=ref_adata, 
+                            # 10X reaction / sample / batch
+                            batch_key='Sample', 
+                            # cell type, covariate used for constructing signatures
+                            labels_key=ref_annotation, 
+                            # multiplicative technical effects (platform, 3' vs 5', donor effect)
+                            categorical_covariate_keys=['Method'])
+        
+            mod = c2l.models.RegressionModel(ref_adata) 
+            mod.train(max_epochs=epochs)
+        
+            ref_adata = mod.export_posterior(
+                ref_adata, sample_kwargs={'num_samples': 1000, 'batch_size': 2500})
+            
+            # Save model
+            mod.save(f"{ref_run_name}", overwrite=True)
+        
+            if 'means_per_cluster_mu_fg' in ref_adata.varm.keys():
+                inf_aver = ref_adata.varm['means_per_cluster_mu_fg'][[f'means_per_cluster_mu_fg_{i}' 
+                                                for i in ref_adata.uns['mod']['factor_names']]].copy()
+            else:
+                inf_aver = ref_adata.var[[f'means_per_cluster_mu_fg_{i}' 
+                                                for i in ref_adata.uns['mod']['factor_names']]].copy()
+                
+            ct_key += 'means_per_cluster_mu_fg_'
+            ref_adata.varm['inf_aver'] = inf_aver
     
         
         common_genes = list(set(inf_aver.index) & set(srt_adata.var_names))
@@ -217,9 +226,8 @@ def run_cell2location(ref_adata, srt_adata, ref_annotation, epochs = 20000, N_ce
         srt_adata = mod.export_posterior(
             srt_adata, sample_kwargs={'num_samples': 1000, 'batch_size': mod.adata.n_obs})
        
-        weights = srt_adata.obsm['q05_cell_abundance_w_sf']
-        ct_key = 'q05cell_abundance_w_sf_means_per_cluster_mu_fg_'
+        weights = srt_adata.obsm['q05_cell_abundance_w_sf'].copy()
         weights.columns = [c[len(ct_key):] for c in weights.columns]
-        return polish_weights(weights, sorted(set(ref_adata.obs[ref_annotation])), srt_adata.obs_names )
+        return polish_weights(weights, sorted(set(ref_adata.obs[ref_annotation])), srt_adata.obs_names, normalize)
 
         
